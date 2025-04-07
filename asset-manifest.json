@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/RubaiyaZishan/static/css/main.2651929e.css",
+    "main.js": "/RubaiyaZishan/static/js/main.67c972d5.js",
+    "index.html": "/RubaiyaZishan/index.html",
+    "main.2651929e.css.map": "/RubaiyaZishan/static/css/main.2651929e.css.map",
+    "main.67c972d5.js.map": "/RubaiyaZishan/static/js/main.67c972d5.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.2651929e.css",
+    "static/js/main.67c972d5.js"
+  ]
+}
