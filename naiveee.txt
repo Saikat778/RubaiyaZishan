@@ -1,0 +1,148 @@
+import React, { useEffect, useState } from "react";
+import { getDocs, addDoc, collection, query, where, deleteDoc } from "firebase/firestore";
+import { db, auth } from "../../config/firebase";
+import { useAuthState } from "react-firebase-hooks/auth";
+
+export interface PostData {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  img: string;
+}
+
+interface CommentData {
+  id: string;
+  userId: string;
+  username: string;
+  commentText: string;
+}
+
+interface CategoryPostsProps {
+  category: string;
+}
+
+export const CategoryPosts = (props: CategoryPostsProps) => {
+  const { category } = props;
+  const [user] = useAuthState(auth);
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [likesCount, setLikesCount] = useState<{ [key: string]: number }>({});
+  const [userLikes, setUserLikes] = useState<{ [key: string]: boolean }>({});
+  const [comments, setComments] = useState<{ [key: string]: CommentData[] }>({});
+  const [newComment, setNewComment] = useState<{ [key: string]: string }>({});
+
+  const likesRef = collection(db, "like");
+  const commentsRef = collection(db, "comments");
+
+  const addLike = async (postId: string) => {
+    if (!user?.uid) return;
+    await addDoc(likesRef, { userId: user.uid, postId });
+    setUserLikes((prev) => ({ ...prev, [postId]: true }));
+    setLikesCount((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+  };
+
+  const removeLike = async (postId: string) => {
+    if (!user?.uid) return;
+    const q = query(likesRef, where("userId", "==", user.uid), where("postId", "==", postId));
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach(async (doc) => {
+      await deleteDoc(doc.ref);
+    });
+    setUserLikes((prev) => ({ ...prev, [postId]: false }));
+    setLikesCount((prev) => ({ ...prev, [postId]: prev[postId] > 0 ? prev[postId] - 1 : 0 }));
+  };
+
+  const addComment = async (postId: string) => {
+    if (!user?.uid) return;
+    const commentText = newComment[postId];
+    if (!commentText) return;
+
+    const newCommentRef = await addDoc(commentsRef, {
+      postId,
+      userId: user.uid,
+      username: user.displayName || "Anonymous",
+      commentText,
+      timestamp: new Date(),
+    });
+    setComments((prev) => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), { id: newCommentRef.id, userId: user.uid, username: user.displayName || "Anonymous", commentText }],
+    }));
+    setNewComment((prev) => ({ ...prev, [postId]: "" }));
+  };
+
+  const fetchComments = async (postId: string) => {
+    const q = query(commentsRef, where("postId", "==", postId));
+    const querySnapshot = await getDocs(q);
+    const commentsData = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as CommentData[];
+    setComments((prev) => ({ ...prev, [postId]: commentsData }));
+  };
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      const postsRef = collection(db, "posts");
+      const q = query(postsRef, where("category", "==", category));
+      const querySnapshot = await getDocs(q);
+      const postsData = querySnapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as PostData[];
+
+      setPosts(postsData);
+
+      // Fetch likes and comments count for each post
+      postsData.forEach(async (post) => {
+        const likesSnapshot = await getDocs(query(likesRef, where("postId", "==", post.id)));
+        setLikesCount((prev) => ({ ...prev, [post.id]: likesSnapshot.size }));
+        fetchComments(post.id);  // Fetch comments for each post
+      });
+    };
+
+    fetchPosts();
+  }, [category, user]);
+
+  return (
+    <div>
+      <h2>{category} Posts</h2>
+      {posts.length > 0 ? (
+        posts.map((post) => (
+          <div key={post.id}>
+            <img src={post.img} alt="image" />
+            <h3>{post.title}</h3>
+            <p>{post.description}</p>
+            <button onClick={() => userLikes[post.id] ? removeLike(post.id) : addLike(post.id)}>
+              {userLikes[post.id] ? '👎' : '👍'}
+            </button>
+            <p>Likes: {likesCount[post.id] || 0}</p>
+            
+            {/* Comment form */}
+            <div>
+              <input
+                type="text"
+                placeholder="Add a comment..."
+                value={newComment[post.id] || ""}
+                onChange={(e) => setNewComment((prev) => ({ ...prev, [post.id]: e.target.value }))}
+              />
+              <button onClick={() => addComment(post.id)}>Comment</button>
+            </div>
+
+            {/* Display comments */}
+            <div>
+              <h4>Comments:</h4>
+              {comments[post.id]?.map((comment) => (
+                <div key={comment.id}>
+                  <p><strong>{comment.username}</strong>: {comment.commentText}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <p>No posts found in this category.</p>
+      )}
+    </div>
+  );
+};
